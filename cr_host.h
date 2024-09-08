@@ -1,559 +1,63 @@
-/*
-# cr.h
+#pragma once
 
-A single file header-only live reload solution for C, written in C++:
-
-- simple public API, 3 functions to use only (and another to export);
-- works and tested on Linux, MacOSX and Windows;
-- automatic crash protection;
-- automatic static state transfer;
-- based on dynamic reloadable binary (.so/.dylib/.dll);
-- support multiple plugins;
-- MIT licensed;
-
-NOTE: The only file that matters in this repository is `cr.h`.
-
-This file contains the documentation in markdown, the license, the implementation and the public api.
-All other files in this repository are supporting files and can be safely ignored.
-
-### Building cr - Using vcpkg
-
-You can download and install cr using the [vcpkg](https://github.com/Microsoft/vcpkg) dependency manager:
-
-    git clone https://github.com/Microsoft/vcpkg.git
-    cd vcpkg
-    ./bootstrap-vcpkg.sh
-    ./vcpkg integrate install
-    ./vcpkg install cr
-
-The cr port in vcpkg is kept up to date by Microsoft team members and community contributors. If the version is out of date, please [create an issue or pull request](https://github.com/Microsoft/vcpkg) on the vcpkg repository.
-
-### Example
-
-A (thin) host application executable will make use of `cr` to manage
-live-reloading of the real application in the form of dynamic loadable binary, a host would be something like:
-
-```c
-#define CR_HOST // required in the host only and before including cr.h
-#include "../cr.h"
-
-int main(int argc, char *argv[]) {
-    // the host application should initalize a plugin with a context, a plugin
-    cr_plugin ctx;
-
-    // the full path to the live-reloadable application
-    cr_plugin_open(ctx, "c:/path/to/build/game.dll");
-
-    // call the update function at any frequency matters to you, this will give
-    // the real application a chance to run
-    while (!cr_plugin_update(ctx)) {
-        // do anything you need to do on host side (ie. windowing and input stuff?)
-    }
-
-    // at the end do not forget to cleanup the plugin context
-    cr_plugin_close(ctx);
-    return 0;
-}
-```
-
-While the guest (real application), would be like:
-
-```c
-CR_EXPORT int cr_main(struct cr_plugin *ctx, enum cr_op operation) {
-    assert(ctx);
-    switch (operation) {
-        case CR_LOAD:   return on_load(...); // loading back from a reload
-        case CR_UNLOAD: return on_unload(...); // preparing to a new reload
-        case CR_CLOSE: ...; // the plugin will close and not reload anymore
-    }
-    // CR_STEP
-    return on_update(...);
-}
-```
-
-### Changelog
-
-#### 2020-04-19
-
-- Added a failure `CR_INITIAL_FAILURE`. If the initial plugin crashes, the host must determine the next path, and we will not reload
-the broken plugin.
-
-#### 2020-01-09
-
-- Deprecated `cr_plugin_load` in favor to `cr_plugin_open` for consistency with `cr_plugin_close`. See issue #49.
-- Minor documentation improvements.
-
-#### 2018-11-17
-
-- Support to OSX finished, thanks to MESH Consultants Inc.
-- Added a new possible failure `CR_BAD_IMAGE` in case the binary file is stil not ready even if its timestamp changed. This could happen if generating the file (compiler or copying) was slow.
-- Windows: Fix issue with too long paths causing the PDB patch process to fail, causing the reload process to fail.
-- **Possible breaking change:** Fix rollback flow. Before, during a rollback (for any reason) two versions were decremented one-shot so that the in following load, the version would bump again getting us effectively on the previous version, but in some cases not related to crashes this wasn't completely valid (see `CR_BAD_IMAGE`). Now the version is decremented one time in the crash handler and then another time during the rollback and then be bumped again. A rollback due an incomplete image will not incorrectly rollback two versions, it will continue at the same version retrying the load until the image is valid (copy or compiler finished writing to it). This may impact current uses of `cr` if the `version` info is used during `CR_UNLOAD` as it will now be a different value.
-
-### Samples
-
-Two simple samples can be found in the `samples` directory.
-
-The first is one is a simple console application that demonstrate some basic static
-states working between instances and basic crash handling tests. Print to output
-is used to show what is happening.
-
-The second one demonstrates how to live-reload an opengl application using
- [Dear ImGui](https://github.com/ocornut/imgui). Some state lives in the host
- side while most of the code is in the guest side.
-
- ![imgui sample](https://i.imgur.com/Nq6s0GP.gif)
-
-#### Running Samples and Tests
-
-The samples and tests uses the [fips build system](https://github.com/floooh/fips). It requires Python and CMake.
-
-```
-$ ./fips build            # will generate and build all artifacts
-$ ./fips run crTest       # To run tests
-$ ./fips run imgui_host   # To run imgui sample
-# open a new console, then modify imgui_guest.cpp
-$ ./fips make imgui_guest # to build and force imgui sample live reload
-```
-
-### Documentation
-
-#### `int (*cr_main)(struct cr_plugin *ctx, enum cr_op operation)`
-
-This is the function pointer to the dynamic loadable binary entry point function.
-
-Arguments
-
-- `ctx` pointer to a context that will be passed from `host` to the `guest` containing valuable information about the current loaded version, failure reason and user data. For more info see `cr_plugin`.
-- `operation` which operation is being executed, see `cr_op`.
-
-Return
-
-- A negative value indicating an error, forcing a rollback to happen and failure
- being set to `CR_USER`. 0 or a positive value that will be passed to the
-  `host` process.
-
-#### `bool cr_plugin_open(cr_plugin &ctx, const char *fullpath)`
-
-Loads and initialize the plugin.
-
-Arguments
-
-- `ctx` a context that will manage the plugin internal data and user data.
-- `fullpath` full path with filename to the loadable binary for the plugin or
- `NULL`.
-
-Return
-
-- `true` in case of success, `false` otherwise.
-
-#### `void cr_set_temporary_path(cr_plugin& ctx, const std::string &path)`
-
-Sets temporary path to which temporary copies of plugin will be placed. Should be called
-immediately after `cr_plugin_open()`. If `temporary` path is not set, temporary copies of
-the file will be copied to the same directory where the original file is located.
-
-Arguments
-
-- `ctx` a context that will manage the plugin internal data and user data.
-- `path` a full path to an existing directory which will be used for storing temporary plugin copies.
-
-#### `int cr_plugin_update(cr_plugin &ctx, bool reloadCheck = true)`
-
-This function will call the plugin `cr_main` function. It should be called as
- frequently as the core logic/application needs.
-
-Arguments
-
-- `ctx` the current plugin context data.
-- `reloadCheck` optional: do a disk check (stat()) to see if the dynamic library needs a reload.
-
-Return
-
-- -1 if a failure happened during an update;
-- -2 if a failure happened during a load or unload;
-- anything else is returned directly from the plugin `cr_main`.
-
-#### `void cr_plugin_close(cr_plugin &ctx)`
-
-Cleanup internal states once the plugin is not required anymore.
-
-Arguments
-
-- `ctx` the current plugin context data.
-
-#### `cr_op`
-
-Enum indicating the kind of step that is being executed by the `host`:
-
-- `CR_LOAD` A load caused by reload is being executed, can be used to restore any
- saved internal state. 
-- `CR_STEP` An application update, this is the normal and most frequent operation;
-- `CR_UNLOAD` An unload for reloading the plugin will be executed, giving the
- application one chance to store any required data;
-- `CR_CLOSE` Used when closing the plugin, This works like `CR_UNLOAD` but no `CR_LOAD`
- should be expected afterwards;
-
-#### `cr_plugin`
-
-The plugin instance context struct.
-
-- `p` opaque pointer for internal cr data;
-- `userdata` may be used by the user to pass information between reloads;
-- `version` incremetal number for each succeded reload, starting at 1 for the
- first load. **The version will change during a crash handling process**;
-- `failure` used by the crash protection system, will hold the last failure error
- code that caused a rollback. See `cr_failure` for more info on possible values;
-
-#### `cr_failure`
-
-If a crash in the loadable binary happens, the crash handler will indicate the
- reason of the crash with one of these:
-
-- `CR_NONE` No error;
-- `CR_SEGFAULT` Segmentation fault. `SIGSEGV` on Linux/OSX or
- `EXCEPTION_ACCESS_VIOLATION` on Windows;
-- `CR_ILLEGAL` In case of illegal instruction. `SIGILL` on Linux/OSX or
- `EXCEPTION_ILLEGAL_INSTRUCTION` on Windows;
-- `CR_ABORT` Abort, `SIGBRT` on Linux/OSX, not used on Windows;
-- `CR_MISALIGN` Bus error, `SIGBUS` on Linux/OSX or `EXCEPTION_DATATYPE_MISALIGNMENT`
- on Windows;
-- `CR_BOUNDS` Is `EXCEPTION_ARRAY_BOUNDS_EXCEEDED`, Windows only;
-- `CR_STACKOVERFLOW` Is `EXCEPTION_STACK_OVERFLOW`, Windows only;
-- `CR_STATE_INVALIDATED` Static `CR_STATE` management safety failure;
-- `CR_BAD_IMAGE` The plugin is not a valid image (i.e. the compiler may still
-writing it);
-- `CR_OTHER` Other signal, Linux only;
-- `CR_USER` User error (for negative values returned from `cr_main`);
-
-#### `CR_HOST` define
-
-This define should be used before including the `cr.h` in the `host`, if `CR_HOST`
- is not defined, `cr.h` will work as a public API header file to be used in the
-  `guest` implementation.
-
-Optionally `CR_HOST` may also be defined to one of the following values as a way
- to configure the `safety` operation mode for automatic static state management
-  (`CR_STATE`):
-
-- `CR_SAFEST` Will validate address and size of the state data sections during
- reloads, if anything changes the load will rollback;
-- `CR_SAFE` Will validate only the size of the state section, this mean that the
- address of the statics may change (and it is best to avoid holding any pointer
-  to static stuff);
-- `CR_UNSAFE` Will validate nothing but that the size of section fits, may not
- be necessarelly exact (growing is acceptable but shrinking isn't), this is the
- default behavior;
-- `CR_DISABLE` Completely disable automatic static state management;
-
-#### `CR_STATE` macro
-
-Used to tag a global or local static variable to be saved and restored during a reload.
-
-Usage
-
-`static bool CR_STATE bInitialized = false;`
-
-#### Overridable macros
-
-You can define these macros before including cr.h in host (CR_HOST) to customize cr.h
- memory allocations and other behaviours:
-
-- `CR_MAIN_FUNC`: changes 'cr_main' symbol to user-defined function name. default: #define CR_MAIN_FUNC "cr_main"
-- `CR_ASSERT`: override assert. default: #define CA_ASSERT(e) assert(e)
-- `CR_REALLOC`: override libc's realloc. default: #define CR_REALLOC(ptr, size) ::realloc(ptr, size)
-- `CR_MALLOC`: override libc's malloc. default: #define CR_MALLOC(size) ::malloc(size)
-- `CR_FREE`: override libc's free. default: #define CR_FREE(ptr) ::free(ptr)
-- `CR_DEBUG`: outputs debug messages in CR_ERROR, CR_LOG and CR_TRACE
-- `CR_ERROR`: logs debug messages to stderr. default (CR_DEBUG only): #define CR_ERROR(...) fprintf(stderr, __VA_ARGS__)
-- `CR_LOG`: logs debug messages. default (CR_DEBUG only): #define CR_LOG(...) fprintf(stdout, __VA_ARGS__)
-- `CR_TRACE`: prints function calls. default (CR_DEBUG only): #define CR_TRACE(...) fprintf(stdout, "CR_TRACE: %s\n", __FUNCTION__)
-
-### FAQ / Troubleshooting
-
-#### Q: Why?
-
-A: Read about why I made this [here](https://fungos.github.io/blog/2017/11/20/cr.h-a-simple-c-hot-reload-header-only-library/).
-
-#### Q: My application asserts/crash when freeing heap data allocated inside the dll, what is happening?
-
-A: Make sure both your application host and your dll are using the dynamic
- run-time (/MD or /MDd) as any data allocated in the heap must be freed with
-  the same allocator instance, by sharing the run-time between guest and
-   host you will guarantee the same allocator is being used.
-
-#### Q: Can we load multiple plugins at the same time?
-
-A: Yes. This should work without issues on Windows. On Linux and OSX there may be
-issues with crash handling
-
-#### Q: You said this wouldn't lock my PDB, but it still locks! Why?
-
-If you had to load the dll before `cr` for any reason, Visual Studio may still hold a lock to the PDB. You may be having [this issue](https://github.com/fungos/cr/issues/12) and the solution is [here](https://stackoverflow.com/questions/38427425/how-to-force-visual-studio-2015-to-unlock-pdb-file-after-freelibrary-call).
-
-#### Q: Hot-reload is not working at all, what I'm doing wrong?
-
-First, be sure that your build system is not interfering by somewhat still linking to your shared library. There are so many things that can go wrong and you need to be sure only `cr` will deal with your shared library. On linux, for more info on how to find what is happening, check [this issue](https://github.com/fungos/cr/issues/9).
-
-#### Q: How much can I change things in the plugin without risking breaking everything?
-
-`cr` is `C` reloader and dealing with C it assume simple things will mostly work.
-
-The problem is how the linker will decide do rearrange things accordingly the amount of changes you do in the code. For incremental and localized changes I never had any issues, in general I hardly had any issues at all by writing normal C code. Now, when things start to become more complex and bordering C++, it becomes riskier. If you need do complex things, I suggest checking [RCCPP](https://github.com/RuntimeCompiledCPlusPlus/RuntimeCompiledCPlusPlus) and reading [this PDF](http://www.gameaipro.com/GameAIPro/GameAIPro_Chapter15_Runtime_Compiled_C++_for_Rapid_AI_Development.pdf) and my original blog post about `cr` [here](https://fungos.github.io/blog/2017/11/20/cr.h-a-simple-c-hot-reload-header-only-library/).
-
-With all these information you'll be able to decide which is better to your use case.
-
-### `cr` Sponsors
-
-![MESH](https://static1.squarespace.com/static/5a5f5f08aeb625edacf9327b/t/5a7b78aa8165f513404129a3/1534346581876/?format=150w)
-
-#### [MESH Consultants Inc.](http://meshconsultants.ca/)
-**For sponsoring the port of `cr` to the MacOSX.**
-
-### Contributors
-
-[Danny Grein](https://github.com/fungos)
-
-[Rokas Kupstys](https://github.com/rokups)
-
-[Noah Rinehart](https://github.com/noahrinehart)
-
-[Niklas Lundberg](https://github.com/datgame)
-
-[Sepehr Taghdisian](https://github.com/septag)
-
-[Robert Gabriel Jakabosky](https://github.com/neopallium)
-
-[@pixelherodev](https://github.com/pixelherodev)
-
-[Alexander](https://github.com/clibequilibrium)
-
-### Contributing
-
-We welcome *ALL* contributions, there is no minor things to contribute with, even one letter typo fixes are welcome.
-
-The only things we require is to test thoroughly, maintain code style and keeping documentation up-to-date.
-
-Also, accepting and agreeing to release any contribution under the same license.
-
-----
-
-### License
-
-The MIT License (MIT)
-
-Copyright (c) 2017 Danny Angelo Carminati Grein
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-----
-
-### Source
-
-<details>
-<summary>View Source Code</summary>
-
-```c
-*/
-#ifndef __CR_H__
-#define __CR_H__
-
-//
-// Global OS specific defines/customizations
-//
-#if defined(_WIN32)
-#define CR_WINDOWS
-#define CR_PLUGIN(name) "" name ".dll"
-#elif defined(__linux__)
-#define CR_LINUX
-#define CR_PLUGIN(name) "lib" name ".so"
-#elif defined(__APPLE__)
-#define CR_OSX
-#define CR_PLUGIN(name) "lib" name ".dylib"
-#else
-#error "Unknown/unsupported platform, please open an issue if you think this \
-platform should be supported."
-#endif // CR_WINDOWS || CR_LINUX || CR_OSX
-
-//
-// Global compiler specific defines/customizations
-//
-#if defined(_MSC_VER)
-#if defined(__cplusplus)
-#define CR_EXPORT extern "C" __declspec(dllexport)
-#define CR_IMPORT extern "C" __declspec(dllimport)
-#else
-#define CR_EXPORT __declspec(dllexport)
-#define CR_IMPORT __declspec(dllimport)
-#endif
-#endif // defined(_MSC_VER)
-
-#if defined(__GNUC__) // clang & gcc
-#if defined(__cplusplus)
-#define CR_EXPORT extern "C" __attribute__((visibility("default")))
-#else
-#define CR_EXPORT __attribute__((visibility("default")))
-#endif
-#define CR_IMPORT
-#endif // defined(__GNUC__)
-
-#if defined(__MINGW32__)
-#undef CR_EXPORT
-#if defined(__cplusplus)
-#define CR_EXPORT  extern "C" __declspec(dllexport)
-#else
-#define CR_EXPORT  __declspec(dllexport)
-#endif
-#endif
-
-// cr_mode defines how much we validate global state transfer between
-// instances. The default is CR_UNSAFE, you can choose another mode by
-// defining CR_HOST, ie.: #define CR_HOST CR_SAFEST
-enum cr_mode {
-    CR_SAFEST = 0, // validate address and size of the state section, if
-                   // anything changes the load will rollback
-    CR_SAFE = 1,   // validate only the size of the state section, this means
-                   // that address is assumed to be safe if avoided keeping
-                   // references to global/static states
-    CR_UNSAFE = 2, // don't validate anything but that the size of the section
-                   // fits, may not be identical though
-    CR_DISABLE = 3 // completely disable the auto state transfer
-};
-
-// cr_op is passed into the guest process to indicate the current operation
-// happening so the process can manage its internal data if it needs.
-enum cr_op {
-    CR_LOAD = 0,
-    CR_STEP = 1,
-    CR_UNLOAD = 2,
-    CR_CLOSE = 3,
-};
-
-enum cr_failure {
-    CR_NONE,     // No error
-    CR_SEGFAULT, // SIGSEGV / EXCEPTION_ACCESS_VIOLATION
-    CR_ILLEGAL,  // illegal instruction (SIGILL) / EXCEPTION_ILLEGAL_INSTRUCTION
-    CR_ABORT,    // abort (SIGBRT)
-    CR_MISALIGN, // bus error (SIGBUS) / EXCEPTION_DATATYPE_MISALIGNMENT
-    CR_BOUNDS,   // EXCEPTION_ARRAY_BOUNDS_EXCEEDED
-    CR_STACKOVERFLOW, // EXCEPTION_STACK_OVERFLOW
-    CR_STATE_INVALIDATED, // one or more global data section changed and does
-                          // not safely match basically a failure of
-                          // cr_plugin_validate_sections
-    CR_BAD_IMAGE, // The binary is not valid - compiler is still writing it
-    CR_INITIAL_FAILURE, // Plugin version 1 crashed, cannot rollback
-    CR_OTHER,    // Unknown or other signal,
-    CR_USER = 0x100,
-};
-
-struct cr_plugin;
-
-typedef int (*cr_plugin_main_func)(struct cr_plugin *ctx, enum cr_op operation);
-
-// public interface for the plugin context, this has some user facing
-// variables that may be used to manage reload feedback.
-// - userdata may be used by the user to pass information between reloads
-// - version is the reload counter (after loading the first instance it will
-//   be 1, not 0)
-// - failure is the (platform specific) last error code for any crash that may
-//   happen to cause a rollback reload used by the crash protection system
-struct cr_plugin {
-    void *p;
-    void *userdata;
-    unsigned int version;
-    enum cr_failure failure;
-    unsigned int next_version;
-    unsigned int last_working_version;
-};
-
-#ifndef CR_HOST
-
-// Guest specific compiler defines/customizations
-#if defined(_MSC_VER)
-#pragma section(".state", read, write)
-#define CR_STATE __declspec(allocate(".state"))
-#endif // defined(_MSC_VER)
-
-#if defined(CR_OSX)
-#define CR_STATE __attribute__((used, section("__DATA,__state")))
-#else
-#if defined(__GNUC__) // clang & gcc
-#define CR_STATE __attribute__((section(".state")))
-#endif // defined(__GNUC__)
-#endif
-
-#else // #ifndef CR_HOST
+#include "cr_shared.h"
 
 // Overridable macros
 #ifndef CR_LOG
-#   ifdef CR_DEBUG
-#       include <stdio.h>
-#       define CR_LOG(...)     fprintf(stdout, __VA_ARGS__)
-#   else
-#       define CR_LOG(...)
-#   endif
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_LOG(...) fprintf(stdout, __VA_ARGS__)
+#else
+#define CR_LOG(...)
+#endif
 #endif
 
 #ifndef CR_ERROR
-#   ifdef CR_DEBUG
-#       include <stdio.h>
-#       define CR_ERROR(...)     fprintf(stderr, __VA_ARGS__)
-#   else
-#       define CR_ERROR(...)
-#   endif
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_ERROR(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define CR_ERROR(...)
+#endif
 #endif
 
 #ifndef CR_TRACE
-#   ifdef CR_DEBUG
-#       include <stdio.h>
-#       define CR_TRACE        fprintf(stdout, "CR_TRACE: %s\n", __FUNCTION__);
-#   else
-#       define CR_TRACE
-#   endif
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_TRACE fprintf(stdout, "CR_TRACE: %s\n", __FUNCTION__);
+#else
+#define CR_TRACE
+#endif
 #endif
 
 #ifndef CR_MAIN_FUNC
-#   define CR_MAIN_FUNC "cr_main"
+#define CR_MAIN_FUNC "cr_main"
 #endif
 
 #ifndef CR_ASSERT
-#   include <assert.h>
-#   define CR_ASSERT(e)             assert(e)
+#include <assert.h>
+#define CR_ASSERT(e) assert(e)
 #endif
 
 #ifndef CR_REALLOC
-#   include <stdlib.h>
-#   define CR_REALLOC(ptr, size)   ::realloc(ptr, size)
+#include <stdlib.h>
+#define CR_REALLOC(ptr, size) ::realloc(ptr, size)
 #endif
 
 #ifndef CR_FREE
-#   include <stdlib.h>
-#   define CR_FREE(ptr)            ::free(ptr)
+#include <stdlib.h>
+#define CR_FREE(ptr) ::free(ptr)
 #endif
 
 #ifndef CR_MALLOC
-#   include <stdlib.h>
-#   define CR_MALLOC(size)         ::malloc(size)
+#include <stdlib.h>
+#define CR_MALLOC(size) ::malloc(size)
 #endif
 
 #if defined(_MSC_VER)
 // we should probably push and pop this
-#   pragma warning(disable:4003) // not enough actual parameters for macro 'identifier'
+#pragma warning(                                                               \
+    disable : 4003) // not enough actual parameters for macro 'identifier'
 #endif
 
 #define CR_DO_EXPAND(x) x##1337
@@ -578,6 +82,22 @@ struct cr_plugin {
 #define CR_PATH_SEPARATOR '/'
 #define CR_PATH_SEPARATOR_INVALID '\\'
 #endif
+
+// function prototypes
+#if defined(CR_LINUX) || defined(CR_OSX)
+typedef void *so_handle;
+static so_handle cr_so_load(const std::string &filename);
+#elif defined(CR_WINDOWS)
+typedef HMODULE so_handle;
+static so_handle cr_so_load(const std::string &filename);
+#endif
+
+static void cr_plat_init(void);
+static bool cr_exists(const std::string &path);
+static void cr_so_unload(cr_plugin &ctx);
+static void cr_del(const std::string &path);
+static bool cr_copy(const std::string &from, const std::string &to);
+static time_t cr_last_write_time(const std::string &path);
 
 static void cr_split_path(std::string path, std::string &parent_dir,
                           std::string &base_name, std::string &ext) {
@@ -614,11 +134,13 @@ static std::string cr_version_path(const std::string &basepath,
     cr_split_path(basepath, folder, fname, ext);
     std::string ver = std::to_string(version);
 #if defined(_MSC_VER)
-    // When patching PDB file path in library file we will drop path and leave only file name.
-    // Length of path is extra space for version number. Trim file name only if version number
-    // length exceeds pdb folder path length. This is not relevant on other platforms.
+    // When patching PDB file path in library file we will drop path and leave
+    // only file name. Length of path is extra space for version number. Trim
+    // file name only if version number length exceeds pdb folder path length.
+    // This is not relevant on other platforms.
     if (ver.size() > folder.size()) {
-        fname = fname.substr(0, fname.size() - (ver.size() - folder.size() - 1));
+        fname =
+            fname.substr(0, fname.size() - (ver.size() - folder.size() - 1));
     }
 #endif
     if (!temppath.empty()) {
@@ -693,10 +215,10 @@ void cr_set_temporary_path(cr_plugin &ctx, const std::string &path) {
 #if defined(_MSC_VER)
 #pragma comment(lib, "dbghelp.lib")
 #endif
-using so_handle = HMODULE;
 
 #ifdef UNICODE
-#   define CR_WINDOWS_ConvertPath(_newpath, _path)     std::wstring _newpath(cr_utf8_to_wstring(_path))
+#define CR_WINDOWS_ConvertPath(_newpath, _path)                                \
+    std::wstring _newpath(cr_utf8_to_wstring(_path))
 
 static std::wstring cr_utf8_to_wstring(const std::string &str) {
     int wlen = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, 0, 0);
@@ -715,8 +237,9 @@ static std::wstring cr_utf8_to_wstring(const std::string &str) {
     return wpath;
 }
 #else
-#   define CR_WINDOWS_ConvertPath(_newpath, _path)     const std::string &_newpath = _path
-#endif  // UNICODE
+#define CR_WINDOWS_ConvertPath(_newpath, _path)                                \
+    const std::string &_newpath = _path
+#endif // UNICODE
 
 static time_t cr_last_write_time(const std::string &path) {
     CR_WINDOWS_ConvertPath(_path, path);
@@ -747,7 +270,7 @@ static bool cr_copy(const std::string &from, const std::string &to) {
     return CopyFile(_from.c_str(), _to.c_str(), FALSE) ? true : false;
 }
 
-static void cr_del(const std::string& path) {
+static void cr_del(const std::string &path) {
     CR_WINDOWS_ConvertPath(_path, path);
     DeleteFile(_path.c_str());
 }
@@ -836,7 +359,7 @@ static bool cr_pe_fileoffset_rva(PIMAGE_NT_HEADERS ntHeaders, DWORD rva,
     }
 
     const int diff = static_cast<int>(sectionHeader->VirtualAddress -
-                                sectionHeader->PointerToRawData);
+                                      sectionHeader->PointerToRawData);
     fileOffset = rva - diff;
     return true;
 }
@@ -876,8 +399,8 @@ static char *cr_pdb_find(LPBYTE imageBase, PIMAGE_DEBUG_DIRECTORY debugDir) {
     return nullptr;
 }
 
-static bool cr_pdb_replace(const std::string &filename, const std::string &pdbname,
-                           std::string &orig_pdb) {
+static bool cr_pdb_replace(const std::string &filename,
+                           const std::string &pdbname, std::string &orig_pdb) {
     CR_WINDOWS_ConvertPath(_filename, filename);
 
     HANDLE fp = nullptr;
@@ -1104,8 +627,7 @@ static cr_plugin_main_func cr_so_symbol(so_handle handle) {
     CR_ASSERT(handle);
     auto new_main = (cr_plugin_main_func)GetProcAddress(handle, CR_MAIN_FUNC);
     if (!new_main) {
-        CR_ERROR("Couldn't find plugin entry point: %d\n",
-                GetLastError());
+        CR_ERROR("Couldn't find plugin entry point: %d\n", GetLastError());
     }
     return new_main;
 }
@@ -1134,7 +656,7 @@ static cr_failure cr_signal_to_failure(int sig) {
 }
 #endif
 
-static void cr_plat_init() {
+static void cr_plat_init(void) {
 #ifdef __MINGW32__
     signal(SIGILL, cr_signal_handler);
     signal(SIGSEGV, cr_signal_handler);
@@ -1212,12 +734,10 @@ static int cr_plugin_main(cr_plugin &ctx, cr_op operation) {
 #include <unistd.h>
 
 #if defined(CR_LINUX)
-#   include <sys/sendfile.h>    // sendfile
+#include <sys/sendfile.h> // sendfile
 #elif defined(CR_OSX)
-#   include <copyfile.h>        // copyfile
+#include <copyfile.h> // copyfile
 #endif
-
-using so_handle = void *;
 
 static time_t cr_last_write_time(const std::string &path) {
     struct stat stats;
@@ -1243,7 +763,8 @@ static bool cr_exists(const std::string &path) {
 
 static bool cr_copy(const std::string &from, const std::string &to) {
 #if defined(CR_LINUX)
-    // Reference: http://www.informit.com/articles/article.aspx?p=23618&seqNum=13
+    // Reference:
+    // http://www.informit.com/articles/article.aspx?p=23618&seqNum=13
     int input, output;
     struct stat src_stat;
     if ((input = open(from.c_str(), O_RDONLY)) == -1) {
@@ -1251,7 +772,8 @@ static bool cr_copy(const std::string &from, const std::string &to) {
     }
     fstat(input, &src_stat);
 
-    if ((output = open(to.c_str(), O_WRONLY|O_CREAT, O_NOFOLLOW|src_stat.st_mode)) == -1) {
+    if ((output = open(to.c_str(), O_WRONLY | O_CREAT,
+                       O_NOFOLLOW | src_stat.st_mode)) == -1) {
         close(input);
         return false;
     }
@@ -1261,11 +783,12 @@ static bool cr_copy(const std::string &from, const std::string &to) {
     close(output);
     return result > -1;
 #elif defined(CR_OSX)
-    return copyfile(from.c_str(), to.c_str(), NULL, COPYFILE_ALL|COPYFILE_NOFOLLOW_DST) == 0;
+    return copyfile(from.c_str(), to.c_str(), NULL,
+                    COPYFILE_ALL | COPYFILE_NOFOLLOW_DST) == 0;
 #endif
 }
 
-static void cr_del(const std::string& path) {
+static void cr_del(const std::string &path) {
     unlink(path.c_str());
 }
 
@@ -1390,8 +913,7 @@ struct cr_ld_data {
 // Some useful references:
 // http://www.skyfree.org/linux/references/ELF_Format.pdf
 // https://eli.thegreenplace.net/2011/08/25/load-time-relocation-of-shared-libraries/
-static int cr_dl_header_handler(struct dl_phdr_info *info, size_t,
-                                void *data) {
+static int cr_dl_header_handler(struct dl_phdr_info *info, size_t, void *data) {
     CR_ASSERT(info && data);
     auto p = (cr_ld_data *)data;
     auto ctx = p->ctx;
@@ -1442,9 +964,9 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
 
         // The ElfW() macro definition turns its argument into the name of an
         // ELF data type suitable for the hardware architecture. For example,
-        // ElfW(Ehdr) yeilds the data type name Elf32_Ehdr on a 32-bit platforms,
-        // and Elf64_Ehdr on 64-bit platforms.
-        ElfW(Ehdr) *ehdr = (ElfW(Ehdr) *) p;
+        // ElfW(Ehdr) yeilds the data type name Elf32_Ehdr on a 32-bit
+        // platforms, and Elf64_Ehdr on 64-bit platforms.
+        ElfW(Ehdr) *ehdr = (ElfW(Ehdr) *)p;
         if (ehdr->e_ident[EI_MAG0] != ELFMAG0 ||
             ehdr->e_ident[EI_MAG1] != ELFMAG1 ||
             ehdr->e_ident[EI_MAG2] != ELFMAG2 ||
@@ -1452,11 +974,11 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
             break;
         }
 
-        ElfW(Shdr*) shdr = (ElfW(Shdr) *)(p + ehdr->e_shoff);
+        ElfW(Shdr *) shdr = (ElfW(Shdr) *)(p + ehdr->e_shoff);
         auto sh_strtab = &shdr[ehdr->e_shstrndx];
         const char *const sh_strtab_p = p + sh_strtab->sh_offset;
-        result = cr_elf_validate_sections(ctx, rollback, shdr,
-                                          ehdr->e_shnum, sh_strtab_p);
+        result = cr_elf_validate_sections(ctx, rollback, shdr, ehdr->e_shnum,
+                                          sh_strtab_p);
     } while (0);
 
     if (p) {
@@ -1472,11 +994,11 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
 
 #elif defined(CR_OSX)
 #include <dlfcn.h>
+#include <limits.h> // PATH_MAX
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
 #include <mach-o/ldsyms.h>
-#include <stdlib.h>     // realpath
-#include <limits.h>     // PATH_MAX
+#include <stdlib.h> // realpath
 
 #if __LP64__
 typedef struct mach_header_64 macho_hdr;
@@ -1522,8 +1044,9 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
     }
     CR_TRACE
 
-    // resolve absolute path of the image, because _dyld_get_image_name returns abs path
-    char imageAbsPath[PATH_MAX+1];
+    // resolve absolute path of the image, because _dyld_get_image_name returns
+    // abs path
+    char imageAbsPath[PATH_MAX + 1];
     if (!::realpath(imagefile.c_str(), imageAbsPath)) {
         CR_ASSERT(0 && "resolving absolute path for plugin failed");
         return false;
@@ -1546,17 +1069,18 @@ static bool cr_plugin_validate_sections(cr_plugin &ctx, so_handle handle,
 
         intptr_t vaddr = _dyld_get_image_vmaddr_slide(i);
         (void)vaddr;
-        //auto cmd_stride = sizeof(struct mach_header);
+        // auto cmd_stride = sizeof(struct mach_header);
         if (hdr->magic != CR_MH_MAGIC) {
             // check for conforming mach-o header
             continue;
         }
 
         auto validate_and_save = [&](cr_plugin_section_type::e sec,
-            intptr_t addr, unsigned long size) {
+                                     intptr_t addr, unsigned long size) {
             if (addr != 0 && size != 0) {
                 if (ctx.version || rollback) {
-                    result &= cr_plugin_section_validate(ctx, sec, addr, 0, size);
+                    result &=
+                        cr_plugin_section_validate(ctx, sec, addr, 0, size);
                 }
                 if (result) {
                     cr_macho_section_save(ctx, sec, addr, size);
@@ -1616,13 +1140,12 @@ static cr_plugin_main_func cr_so_symbol(so_handle handle) {
 sigjmp_buf env;
 
 static void cr_signal_handler(int sig, siginfo_t *si, void *uap) {
-    CR_TRACE
-    (void)uap;
+    CR_TRACE(void) uap;
     CR_ASSERT(si);
     siglongjmp(env, sig);
 }
 
-static void cr_plat_init() {
+static void cr_plat_init(void) {
     CR_TRACE
     static bool initialized = false;
     if (initialized) {
@@ -1763,8 +1286,7 @@ static bool cr_plugin_section_validate(cr_plugin &ctx,
                                        cr_plugin_section_type::e type,
                                        intptr_t ptr, intptr_t base,
                                        int64_t size) {
-    CR_TRACE
-    (void)ptr;
+    CR_TRACE(void) ptr;
     auto p = (cr_internal *)ctx.p;
     switch (p->mode) {
     case CR_SAFE:
@@ -1982,7 +1504,7 @@ extern "C" bool cr_plugin_open(cr_plugin &ctx, const char *fullpath) {
     if (!cr_exists(fullpath)) {
         return false;
     }
-    auto p = new(CR_MALLOC(sizeof(cr_internal))) cr_internal;
+    auto p = new (CR_MALLOC(sizeof(cr_internal))) cr_internal;
     p->mode = CR_OP_MODE;
     p->fullname = fullpath;
     ctx.p = p;
@@ -2013,7 +1535,8 @@ extern "C" void cr_plugin_close(cr_plugin &ctx) {
     for (unsigned int i = 0; i < ctx.version; i++) {
         cr_del(cr_version_path(file, i, p->temppath));
 #if defined(_MSC_VER)
-        cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath), ".pdb"));
+        cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath),
+                                    ".pdb"));
 #endif
     }
 
@@ -2022,13 +1545,3 @@ extern "C" void cr_plugin_close(cr_plugin &ctx) {
     ctx.p = nullptr;
     ctx.version = 0;
 }
-
-#endif // #ifndef CR_HOST
-
-#endif // __CR_H__
-// clang-format off
-/*
-```
-
-</details>
-*/

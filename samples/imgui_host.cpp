@@ -1,7 +1,7 @@
-#include <imgui.h>
-#include <imgui_internal.h>
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h>
+#include <imgui.h>
+#include <imgui_internal.h>
 
 #ifdef _WIN32
 #undef APIENTRY
@@ -11,7 +11,7 @@
 #endif
 
 #define CR_HOST CR_UNSAFE
-#include "../cr.h"
+#include "../cr_host.h"
 
 const char *plugin = CR_DEPLOY_PATH "/" CR_PLUGIN("imgui_guest");
 
@@ -35,13 +35,13 @@ struct HostData {
 
     // glfw functions that imgui calls on guest side
     GLFWwindow *window = nullptr;
-    const char* (*get_clipboard_fn)(void* user_data);
-    void(*set_clipboard_fn)(void* user_data, const char* text);
-    void(*set_cursor_pos_fn)(GLFWwindow* handle, double xpos, double ypos);
-    void(*get_cursor_pos_fn)(GLFWwindow* handle, double* xpos, double* ypos);
-    int(*get_window_attrib_fn)(GLFWwindow* handle, int attrib);
-    int(*get_mouse_button_fn)(GLFWwindow* handle, int button);
-    void(*set_input_mode_fn)(GLFWwindow* handle, int mode, int value);
+    const char *(*get_clipboard_fn)(void *user_data);
+    void (*set_clipboard_fn)(void *user_data, const char *text);
+    void (*set_cursor_pos_fn)(GLFWwindow *handle, double xpos, double ypos);
+    void (*get_cursor_pos_fn)(GLFWwindow *handle, double *xpos, double *ypos);
+    int (*get_window_attrib_fn)(GLFWwindow *handle, int attrib);
+    int (*get_mouse_button_fn)(GLFWwindow *handle, int button);
+    void (*set_input_mode_fn)(GLFWwindow *handle, int mode, int value);
 };
 
 // some global data from our libs we keep in the host so we
@@ -51,42 +51,51 @@ static GLFWwindow *window;
 
 // GLFW callbacks
 // You can also handle inputs yourself and use those as a reference.
-void ImGui_ImplGlfwGL3_MouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-void ImGui_ImplGlfwGL3_ScrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-void ImGui_ImplGlfwGL3_KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-void ImGui_ImplGlfwGL3_CharCallback(GLFWwindow* window, unsigned int c);
+void ImGui_ImplGlfwGL3_MouseButtonCallback(GLFWwindow *window, int button,
+                                           int action, int mods);
+void ImGui_ImplGlfwGL3_ScrollCallback(GLFWwindow *window, double xoffset,
+                                      double yoffset);
+void ImGui_ImplGlfwGL3_KeyCallback(GLFWwindow *window, int key, int scancode,
+                                   int action, int mods);
+void ImGui_ImplGlfwGL3_CharCallback(GLFWwindow *window, unsigned int c);
 
-void ImGui_ImplGlfwGL3_MouseButtonCallback(GLFWwindow*, int button, int action, int /*mods*/) {
+void ImGui_ImplGlfwGL3_MouseButtonCallback(GLFWwindow *, int button, int action,
+                                           int /*mods*/) {
     if (action == GLFW_PRESS && button >= 0 && button < 3)
         data.mousePressed[button] = true;
 }
 
-void ImGui_ImplGlfwGL3_ScrollCallback(GLFWwindow*, double /*xoffset*/, double yoffset) {
-    data.mouseWheel += (float)yoffset; // Use fractional mouse wheel, 1.0 unit 5 lines.
+void ImGui_ImplGlfwGL3_ScrollCallback(GLFWwindow *, double /*xoffset*/,
+                                      double yoffset) {
+    data.mouseWheel +=
+        (float)yoffset; // Use fractional mouse wheel, 1.0 unit 5 lines.
 }
 
-static const char* ImGui_ImplGlfwGL3_GetClipboardText(void* user_data) {
-    return glfwGetClipboardString((GLFWwindow*)user_data);
+static const char *ImGui_ImplGlfwGL3_GetClipboardText(void *user_data) {
+    return glfwGetClipboardString((GLFWwindow *)user_data);
 }
 
-static void ImGui_ImplGlfwGL3_SetClipboardText(void* user_data, const char* text) {
-    glfwSetClipboardString((GLFWwindow*)user_data, text);
+static void ImGui_ImplGlfwGL3_SetClipboardText(void *user_data,
+                                               const char *text) {
+    glfwSetClipboardString((GLFWwindow *)user_data, text);
 }
 
-void ImGui_ImplGlfwGL3_KeyCallback(GLFWwindow*, int key, int, int action, int mods) {
+void ImGui_ImplGlfwGL3_KeyCallback(GLFWwindow *, int key, int, int action,
+                                   int mods) {
     if (action == GLFW_PRESS)
         data.imgui_context->IO.KeysDown[key] = true;
     if (action == GLFW_RELEASE)
         data.imgui_context->IO.KeysDown[key] = false;
 }
 
-void ImGui_ImplGlfwGL3_CharCallback(GLFWwindow*, unsigned int c) {
+void ImGui_ImplGlfwGL3_CharCallback(GLFWwindow *, unsigned int c) {
     if (c > 0 && c < 0x10000) {
         int n = 0;
         for (unsigned short *p = data.inputCharacters; *p; p++) {
             n++;
         }
-        const int len = ((int)(sizeof(data.inputCharacters)/sizeof(*data.inputCharacters)));
+        const int len = ((int)(sizeof(data.inputCharacters) /
+                               sizeof(*data.inputCharacters)));
         if (n + 1 < len) {
             data.inputCharacters[n] = c;
             data.inputCharacters[n + 1] = '\0';
@@ -143,7 +152,7 @@ int main(int argc, char **argv) {
         cr_plugin_update(ctx);
 
         memset(data.inputCharacters, 0, sizeof(data.inputCharacters));
-        
+
         glfwSwapBuffers(window);
     }
 

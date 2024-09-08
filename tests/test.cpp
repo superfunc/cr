@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #define CR_HOST
-#include "../cr.h"
+#include "../cr_host.h"
 #include "test_data.h"
 
 #if defined(CR_WINDOWS) || defined(CR_LINUX)
@@ -33,7 +33,8 @@ void delete_old_files(cr_plugin &ctx, unsigned int max_version) {
     for (unsigned int i = 0; i < max_version; i++) {
         cr_del(cr_version_path(file, i, p->temppath));
 #if defined(_MSC_VER)
-        cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath), ".pdb"));
+        cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath),
+                                    ".pdb"));
 #endif
     }
 }
@@ -105,13 +106,13 @@ TEST(crTest, basic_flow) {
     data.test = test_id::return_version;
     EXPECT_EQ(1, cr_plugin_update(ctx));
 
-    // state should have rollbacked to what it was at the last unload before the crash
-    // +1 because it increments each time we query
+    // state should have rollbacked to what it was at the last unload before the
+    // crash +1 because it increments each time we query
     data.test = test_id::static_local_state_int;
     EXPECT_EQ(saved_local_static + 1, cr_plugin_update(ctx));
 
-    // state should have rollbacked to what it was at the last unload before the crash
-    // +1 because it increments each time we query
+    // state should have rollbacked to what it was at the last unload before the
+    // crash +1 because it increments each time we query
     data.test = test_id::static_global_state_int;
     EXPECT_EQ(saved_global_static + 1, cr_plugin_update(ctx));
 
