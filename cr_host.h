@@ -5,6 +5,8 @@
 
 #include "cr_shared.h"
 
-extern "C" bool cr_plugin_open(cr_plugin &ctx, const char *path, cr_mode mode);
-extern "C" int cr_plugin_update(cr_plugin &ctx, bool reloadCheck);
-extern "C" void cr_plugin_close(cr_plugin &ctx);
+#include <stdbool.h>
+
+extern "C" bool cr_plugin_open(cr_plugin *ctx, const char *path, cr_mode mode);
+extern "C" int cr_plugin_update(cr_plugin *ctx, bool reloadCheck);
+extern "C" void cr_plugin_close(cr_plugin *ctx);

@@ -10,12 +10,12 @@ int main(int argc, char *argv[]) {
     cr_plugin ctx;
     // the host application should initalize a plugin with a context, a plugin
     // filename without extension and the full path to the plugin
-    cr_plugin_open(ctx, plugin, CR_UNSAFE);
+    cr_plugin_open(&ctx, plugin, CR_UNSAFE);
 
     // call the plugin update function with the plugin context to execute it
     // at any frequency matters to you
     while (true) {
-        cr_plugin_update(ctx, true);
+        cr_plugin_update(&ctx, true);
         fflush(stdout);
         fflush(stderr);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -23,6 +23,6 @@ int main(int argc, char *argv[]) {
 
     // at the end do not forget to cleanup the plugin context, as it needs to
     // allocate some memory to track internal and plugin states
-    cr_plugin_close(ctx);
+    cr_plugin_close(&ctx);
     return 0;
 }

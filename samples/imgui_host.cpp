@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
 
     cr_plugin ctx;
     ctx.userdata = &data;
-    cr_plugin_open(ctx, plugin, CR_UNSAFE);
+    cr_plugin_open(&ctx, plugin, CR_UNSAFE);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -148,14 +148,14 @@ int main(int argc, char **argv) {
         glfwGetFramebufferSize(window, &data.display_w, &data.display_h);
         data.timestep = glfwGetTime();
 
-        cr_plugin_update(ctx, true);
+        cr_plugin_update(&ctx, true);
 
         memset(data.inputCharacters, 0, sizeof(data.inputCharacters));
 
         glfwSwapBuffers(window);
     }
 
-    cr_plugin_close(ctx);
+    cr_plugin_close(&ctx);
     glfwTerminate();
 
     return 0;

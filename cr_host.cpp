@@ -4,10 +4,10 @@
 #include "./cr_host.h"
 
 #include <algorithm>
-#include <chrono>  // duration for sleep
-#include <cstring> // memcpy
+#include <stdint.h>
+#include <string.h>
 #include <string>
-#include <thread> // this_thread::sleep_for
+#include <time.h>
 
 // Overridable macros
 #ifndef CR_LOG
@@ -1453,7 +1453,9 @@ static void cr_plugin_reload(cr_plugin &ctx) {
 // frequently as your core logic/application needs. -1 and -2 are the only
 // possible return values from cr meaning a fatal error (causes rollback),
 // other return values are returned directly from `cr_main`.
-extern "C" int cr_plugin_update(cr_plugin &ctx, bool reloadCheck) {
+extern "C" int cr_plugin_update(cr_plugin *ctx_p, bool reloadCheck) {
+    cr_plugin &ctx = *ctx_p;
+
     if (ctx.failure) {
         CR_LOG("1 ROLLBACK version was %d\n", ctx.version);
         cr_plugin_rollback(ctx);
@@ -1484,7 +1486,7 @@ extern "C" int cr_plugin_update(cr_plugin &ctx, bool reloadCheck) {
 }
 
 // Loads a plugin from the specified full path (or current directory if NULL).
-extern "C" bool cr_plugin_open(cr_plugin &ctx, const char *path, cr_mode mode) {
+extern "C" bool cr_plugin_open(cr_plugin *ctx, const char *path, cr_mode mode) {
     CR_TRACE
     CR_ASSERT(path);
     if (!cr_exists(path)) {
@@ -1493,20 +1495,21 @@ extern "C" bool cr_plugin_open(cr_plugin &ctx, const char *path, cr_mode mode) {
     auto p = new (CR_MALLOC(sizeof(cr_internal))) cr_internal;
     p->mode = mode;
     p->fullname = path;
-    ctx.p = p;
-    ctx.next_version = 1;
-    ctx.last_working_version = 0;
-    ctx.version = 0;
-    ctx.failure = CR_NONE;
+    ctx->p = p;
+    ctx->next_version = 1;
+    ctx->last_working_version = 0;
+    ctx->version = 0;
+    ctx->failure = CR_NONE;
     cr_plat_init();
     return true;
 }
 
 // Call to cleanup internal state once the plugin is not required anymore.
-extern "C" void cr_plugin_close(cr_plugin &ctx) {
+extern "C" void cr_plugin_close(cr_plugin *ctx_p) {
     CR_TRACE
     const bool rollback = false;
     const bool close = true;
+    cr_plugin &ctx = *ctx_p;
     cr_plugin_unload(ctx, rollback, close);
     cr_so_sections_free(ctx);
     auto p = (cr_internal *)ctx.p;
