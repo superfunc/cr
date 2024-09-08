@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <thread>
 
-#define CR_HOST CR_UNSAFE // try to best manage static states
 #include "../cr_host.h"
 
 const char *plugin = CR_DEPLOY_PATH "/" CR_PLUGIN("basic_guest");
@@ -11,7 +10,7 @@ int main(int argc, char *argv[]) {
     cr_plugin ctx;
     // the host application should initalize a plugin with a context, a plugin
     // filename without extension and the full path to the plugin
-    cr_plugin_open(ctx, plugin);
+    cr_plugin_open(ctx, plugin, CR_UNSAFE);
 
     // call the plugin update function with the plugin context to execute it
     // at any frequency matters to you

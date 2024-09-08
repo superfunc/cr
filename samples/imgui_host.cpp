@@ -10,7 +10,6 @@
 #include <GLFW/glfw3native.h>
 #endif
 
-#define CR_HOST CR_UNSAFE
 #include "../cr_host.h"
 
 const char *plugin = CR_DEPLOY_PATH "/" CR_PLUGIN("imgui_guest");
@@ -140,7 +139,7 @@ int main(int argc, char **argv) {
 
     cr_plugin ctx;
     ctx.userdata = &data;
-    cr_plugin_open(ctx, plugin);
+    cr_plugin_open(ctx, plugin, CR_UNSAFE);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();

@@ -3,7 +3,7 @@ fips_begin_sharedlib(test_basic cmdline)
 fips_end_sharedlib()
 
 gtest_suite_begin(crTest)
-    fips_files(test.cpp test_data.h test_basic.x)
+    fips_files(test.cpp ../cr_host.cpp test_data.h test_basic.x)
     if (FIPS_MACOS)
         fips_libs(dl)
     endif()

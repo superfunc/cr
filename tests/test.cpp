@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#define CR_HOST
 #include "../cr_host.h"
 #include "test_data.h"
 
@@ -27,17 +26,17 @@ void touch(const char *filename) {
 }
 #endif
 
-void delete_old_files(cr_plugin &ctx, unsigned int max_version) {
-    auto p = (cr_internal *)ctx.p;
-    const auto file = p->fullname;
-    for (unsigned int i = 0; i < max_version; i++) {
-        cr_del(cr_version_path(file, i, p->temppath));
-#if defined(_MSC_VER)
-        cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath),
-                                    ".pdb"));
-#endif
-    }
-}
+// void delete_old_files(cr_plugin &ctx, unsigned int max_version) {
+//     auto p = (cr_internal *)ctx.p;
+//     const auto file = p->fullname;
+//     for (unsigned int i = 0; i < max_version; i++) {
+//         cr_del(cr_version_path(file, i, p->temppath));
+// #if defined(_MSC_VER)
+//         cr_del(cr_replace_extension(cr_version_path(file, i, p->temppath),
+//                                     ".pdb"));
+// #endif
+//     }
+// }
 
 TEST(crTest, basic_flow) {
     const char *bin = CR_DEPLOY_PATH "/" CR_PLUGIN("test_basic");
@@ -47,7 +46,7 @@ TEST(crTest, basic_flow) {
     test_data data;
     ctx.userdata = &data;
     // version 1
-    EXPECT_EQ(true, cr_plugin_open(ctx, bin));
+    EXPECT_EQ(true, cr_plugin_open(ctx, bin, CR_UNSAFE));
 
     data.test = test_id::return_version;
     EXPECT_EQ(1, cr_plugin_update(ctx));
@@ -183,7 +182,7 @@ TEST(crTest, basic_flow) {
     EXPECT_EQ(saved_global_static + 3, cr_plugin_update(ctx));
 
     // Cleanup old version
-    delete_old_files(ctx, ctx.next_version);
+    // delete_old_files(ctx, ctx.next_version);
 
     cr_plugin_close(ctx);
     EXPECT_EQ(ctx.p, nullptr);

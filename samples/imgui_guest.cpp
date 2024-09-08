@@ -536,7 +536,7 @@ void imui_draw() {
     // a window automatically called "Debug"
     {
         static CR_STATE float f = 0.0f;
-        ImGui::Text("Hello, world!");
+        ImGui::Text("Haldijfliajsdflijeolsidfjlisdjfllo, world!");
         ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
         ImGui::ColorEdit3("clear color", (float *)&g_clear_color);
         if (ImGui::Button("Test window"))
@@ -555,7 +555,7 @@ void imui_draw() {
     // 2. Show another simple window, this time using an explicit Begin/End pair
     if (show_another_window) {
         ImGui::Begin("Another window", &show_another_window);
-        ImGui::Text("Hello from another window!");
+        ImGui::Text("oasidjfoajsdifoaidsjfoijHello from another window!");
         ImGui::End();
     }
 

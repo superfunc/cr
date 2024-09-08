@@ -1,3 +1,6 @@
+// Copyright (c) 2017 Danny Angelo Carminati Grein
+// MIT License, see LICENSE file for details
+
 #pragma once
 
 // cr_mode defines how much we validate global state transfer between
