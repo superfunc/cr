@@ -1,3 +1,23 @@
+**FORK**
+
+This is a fork which changes a fair bit about this library.
+Namely, it splits things into different files to improve build
+times, and moves it to plain C, rather than C++ for easier
+integration into C projects. This also currently removes some
+of the nice customization (setting an assert, malloc function)
+the original library has. I plan to add these back via function
+pointers based interfaces, but that isnt there now.
+
+As build times & iteration are a primary focus for my workflow, 
+these changes make sense, they may not for you, and thats ok.
+The desire for live-coding/hot-reload, to me, was about
+iteration speed; so I feel the header-only, C++ based implementation
+doesn't make sense outside of its ease of initial integration, but
+at the cost of long term viability. Moreover the usage of C++ was 
+very minor, using string and auto mostly, so I didn't feel it was
+justified since it adds integration burden for people using vanilla
+C and adds the weight of the STLs terrible headers.
+
 /*
 # cr.h
 

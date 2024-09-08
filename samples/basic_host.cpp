@@ -15,7 +15,7 @@ int main(int argc, char *argv[]) {
     // call the plugin update function with the plugin context to execute it
     // at any frequency matters to you
     while (true) {
-        cr_plugin_update(ctx);
+        cr_plugin_update(ctx, true);
         fflush(stdout);
         fflush(stderr);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));

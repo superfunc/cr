@@ -9,6 +9,58 @@
 #include <string>
 #include <thread> // this_thread::sleep_for
 
+// Overridable macros
+#ifndef CR_LOG
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_LOG(...) fprintf(stdout, __VA_ARGS__)
+#else
+#define CR_LOG(...)
+#endif
+#endif
+
+#ifndef CR_ERROR
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_ERROR(...) fprintf(stderr, __VA_ARGS__)
+#else
+#define CR_ERROR(...)
+#endif
+#endif
+
+#ifndef CR_TRACE
+#ifdef CR_DEBUG
+#include <stdio.h>
+#define CR_TRACE fprintf(stdout, "CR_TRACE: %s\n", __FUNCTION__);
+#else
+#define CR_TRACE
+#endif
+#endif
+
+#ifndef CR_MAIN_FUNC
+#define CR_MAIN_FUNC "cr_main"
+#endif
+
+#ifndef CR_ASSERT
+#include <assert.h>
+#define CR_ASSERT(e) assert(e)
+#endif
+
+#ifndef CR_REALLOC
+#include <stdlib.h>
+#define CR_REALLOC(ptr, size) ::realloc(ptr, size)
+#endif
+
+#ifndef CR_FREE
+#include <stdlib.h>
+#define CR_FREE(ptr) ::free(ptr)
+#endif
+
+#ifndef CR_MALLOC
+#include <stdlib.h>
+#define CR_MALLOC(size) ::malloc(size)
+#endif
+
 #if defined(CR_WINDOWS)
 #define CR_PATH_SEPARATOR '\\'
 #define CR_PATH_SEPARATOR_INVALID '/'

@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
         glfwGetFramebufferSize(window, &data.display_w, &data.display_h);
         data.timestep = glfwGetTime();
 
-        cr_plugin_update(ctx);
+        cr_plugin_update(ctx, true);
 
         memset(data.inputCharacters, 0, sizeof(data.inputCharacters));
 
